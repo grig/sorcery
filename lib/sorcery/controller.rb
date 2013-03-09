@@ -21,7 +21,11 @@ module Sorcery
       # If all attempts to auto-login fail, the failure callback will be called.
       def require_login
         if !logged_in?
-          session[:return_to_url] = request.url if Config.save_return_to_url
+          if ! Config.restful_json_api
+            if Config.save_return_to_url && request.get?
+              session[:return_to_url] = request.url
+            end
+          end
           self.send(Config.not_authenticated_action)
         end
       end
@@ -32,9 +36,11 @@ module Sorcery
         @current_user = nil
         user = user_class.authenticate(*credentials)
         if user
-          return_to_url = session[:return_to_url]
-          reset_session # protect from session fixation attacks
-          session[:return_to_url] = return_to_url
+          if ! Config.restful_json_api
+            return_to_url = session[:return_to_url]
+            reset_session # protect from session fixation attacks
+            session[:return_to_url] = return_to_url
+          end
           auto_login(user)
           after_login!(user, credentials)
           current_user
@@ -48,7 +54,7 @@ module Sorcery
       def logout
         if logged_in?
           before_logout!(current_user)
-          reset_session
+          reset_session unless Config.restful_json_api
           after_logout!
           @current_user = nil
         end
@@ -61,7 +67,11 @@ module Sorcery
       # attempts to auto-login from the sources defined (session, basic_auth, cookie, etc.)
       # returns the logged in user if found, false if not (using old restful-authentication trick, nil != false).
       def current_user
-        @current_user ||= login_from_session || login_from_other_sources unless @current_user == false
+        if Config.restful_json_api
+          @current_user ||= login_from_other_sources
+        else
+          @current_user ||= login_from_session || login_from_other_sources unless @current_user == false
+        end
       end
 
       def current_user=(user)
@@ -79,7 +89,11 @@ module Sorcery
       # You can override this method in your controllers,
       # or provide a different method in the configuration.
       def not_authenticated
-        redirect_to root_path
+        if Config.restful_json_api
+          head :unauthorized
+        else
+          redirect_to root_path
+        end
       end
 
       # login a user instance
@@ -87,13 +101,13 @@ module Sorcery
       # @param [<User-Model>] user the user instance.
       # @return - do not depend on the return value.
       def auto_login(user)
-        session[:user_id] = user.id
+        session[:user_id] = user.id unless Config.restful_json_api
         @current_user = user
       end
 
       # Overwrite Rails' handle unverified request
       def handle_unverified_request
-        cookies[:remember_me_token] = nil
+        cookies[:remember_me_token] = nil unless Config.restful_json_api
         @current_user = nil
         super # call the default behaviour which resets the session
       end
@@ -147,6 +161,9 @@ module Sorcery
 
                       :cookie_domain,                 # set domain option for cookies
 
+                      :restful_json_api,              # RESTful JSON API,
+                                                      # does not use session and cookies,
+                                                      # use access tokens to allow / deny requests
                       :login_sources,
                       :after_login,
                       :after_failed_login,
@@ -164,7 +181,8 @@ module Sorcery
             :@before_logout                        => [],
             :@after_logout                         => [],
             :@save_return_to_url                   => true,
-            :@cookie_domain                        => nil
+            :@cookie_domain                        => nil,
+            :@restful_json_api                     => false
           }
         end
 

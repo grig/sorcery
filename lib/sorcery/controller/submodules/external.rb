@@ -52,6 +52,60 @@ module Sorcery
             end
           end
 
+          # Login external user with access token obtained from an authorization
+          # server by the client-side application.
+          #
+          # Requirements: OAuth 2.0 Protocol. (Implicit Grant)
+          #
+          # Params:
+          # +provider_name+:: name of provider.
+          # +access_token_hash+:: access token properties from client-side app.
+          #
+          def login_from_client_side(provider_name, access_token_hash)
+            provider = Config.send(provider_name)
+
+            return nil if provider.oauth_version == '1.0'
+            if ! ( access_token_hash.key?(:access_token) ||
+                   access_token_hash.key?('access_token') )
+
+               raise 'Missing access_token parameter in properties hash'
+            end
+
+
+            client_options  = provider.client_options
+            provider_client = provider.build_client(client_options)
+            provider.access_token = ::OAuth2::AccessToken.from_hash(provider_client,
+                                                                    access_token_hash)
+
+            user_hash = provider.get_user_hash rescue nil # bad token
+            if user_hash
+              user = user_class.load_from_provider(provider_name, user_hash[:uid].to_s)
+              if user
+                auto_login(user)
+                after_login!(user)
+                user
+              end
+            else
+              nil
+            end
+          end
+
+          # Login external user from access token,
+          # create user if it doesn't exist in database.
+          def login_or_create_from_client_side(provider_name, access_token_hash)
+            user = login_from_client_side(provider_name, access_token_hash)
+            if ! user
+              provider  = Config.send(provider_name)
+              user_hash = provider.get_user_hash rescue nil
+              if user_hash && !!user_hash[:uid]
+                user = create_from(provider_name, user_hash)
+                auto_login(user)
+                after_login!(user)
+              end
+            end
+            user
+          end
+
           # get provider access account
           def access_token(provider)
             @provider = Config.send(provider)
@@ -70,10 +124,10 @@ module Sorcery
           #
           # And this will cause 'moishe' to be set as the value of :username field.
           # Note: Be careful. This method skips validations model.
-          def create_from(provider)
+          def create_from(provider, user_hash = nil)
             provider = provider.to_sym
             @provider = Config.send(provider)
-            @user_hash = @provider.get_user_hash
+            @user_hash = user_hash || @provider.get_user_hash
             config = user_class.sorcery_config
             attrs = {}
             @provider.user_info_mapping.each do |k,v|
