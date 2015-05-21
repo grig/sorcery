@@ -42,7 +42,11 @@ module Sorcery
           # update token last_activity_at (if feature is enabled)
           def login_from_access_token
             @api_access_token = nil
-            client_token  = params[:access_token].to_s
+            if request.authorization.present?
+              client_token = authenticate_with_http_token { |token, options| token }
+            else
+              client_token  = params[:access_token].to_s
+            end
             access_token  = nil
             if ! client_token.blank?
               access_token  = ::AccessToken.find_token(client_token)
