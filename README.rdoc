@@ -1,4 +1,7 @@
-{<img src="https://secure.travis-ci.org/NoamB/sorcery.png" />}[http://travis-ci.org/NoamB/sorcery]
+= Status
+
+This is a fork of 0.7.x branch of sorcery intended for private use. For up to date code, please refer to the main
+repository [https://github.com/noamB/sorcery].
 
 = sorcery
 Magical Authentication for Rails 3.
