@@ -33,6 +33,7 @@ module Sorcery
 
           def auto_login(user, create_token = false)
             @current_user = user
+            session[:user_id] = user.id unless Config.restful_json_api
             set_access_token(user) if create_token
           end
 
